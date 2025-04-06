@@ -1,667 +1,495 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import pandas as pd
-import numpy as np
-from io import StringIO
-from tkinter import font as tkfont
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+#include <stdbool.h>
 
-class CPUSchedulingApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Energy-Sufficient CPU Scheduling Simulator")
-        self.root.geometry("1200x800")
-        self.root.configure(bg="#f0f0f0")
-        
-        
-        self.title_font = tkfont.Font(family="Helvetica", size=16, weight="bold")
-        self.subtitle_font = tkfont.Font(family="Helvetica", size=12)
-        self.button_font = tkfont.Font(family="Helvetica", size=10)
-        
-        
-        self.style = ttk.Style()
-        self.style.configure('TFrame', background="#f0f0f0")
-        self.style.configure('TLabel', background="#f0f0f0", font=self.subtitle_font)
-        self.style.configure('TButton', font=self.button_font, padding=6)
-        self.style.configure('TCombobox', font=self.subtitle_font)
-        self.style.configure('Treeview', font=('Consolas', 10), rowheight=25)
-        self.style.configure('Treeview.Heading', font=('Helvetica', 10, 'bold'))
-        
-        self.dataset = None
-        self.create_widgets()
+#define MAX_PROCESSES 20
+
+typedef struct {
+    char name[10];
+    int arrival_time;
+    int burst_time;
+    int priority;
+    int start_time;
+    int completion_time;
+    int turnaround_time;
+    int waiting_time;
+    int remaining_time;
+} Process;
+
+typedef struct {
+    Process processes[MAX_PROCESSES];
+    int count;
+} ProcessList;
+
+void load_dataset(ProcessList *pl, const char *filename);
+void print_results(ProcessList *pl);
+void calculate_metrics(ProcessList *pl);
+void fcfs(ProcessList *pl);
+void sjf(ProcessList *pl);
+void srtf(ProcessList *pl);
+void round_robin(ProcessList *pl, int quantum);
+void priority_preemptive(ProcessList *pl);
+void priority_non_preemptive(ProcessList *pl);
+void print_gantt_chart(ProcessList *pl);
+void sort_by_arrival(ProcessList *pl);
+void sort_by_burst(ProcessList *pl);
+void sort_by_priority(ProcessList *pl);
+
+int main() {
+    ProcessList pl = {0};
+    int choice, quantum;
+    char filename[100];
     
-    def create_widgets(self):
-      
-        header_frame = ttk.Frame(self.root, style='TFrame')
-        header_frame.pack(fill=tk.X, padx=10, pady=10)
-        
+    printf("Energy-Sufficient CPU Scheduling Simulator\n");
+    printf("=========================================\n\n");
     
-        title_label = ttk.Label(header_frame, 
-                              text="Energy-Sufficient CPU Scheduling Simulator", 
-                              font=self.title_font,
-                              foreground="#2c3e50")
-        title_label.pack(side=tk.LEFT)
-        
-      
-        control_frame = ttk.LabelFrame(self.root, 
-                                     text="Control Panel", 
-                                     padding=(15, 10),
-                                     style='TFrame')
-        control_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-      
-        self.load_btn = ttk.Button(control_frame, 
-                                  text="📂 Load Dataset", 
-                                  command=self.load_dataset,
-                                  style='TButton')
-        self.load_btn.grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        
-        
-        ttk.Label(control_frame, text="Scheduling Algorithm:").grid(row=0, column=1, padx=5, sticky=tk.E)
-        
-        self.algorithm_var = tk.StringVar()
-        algorithms = [
-            "First Come First Serve (FCFS)",
-            "Shortest Job First (SJF)",
-            "Shortest Remaining Time First (SRTF)",
-            "Round Robin (RR)",
-            "Priority with Preemption",
-            "Priority without Preemption"
-        ]
-        
-        self.algorithm_menu = ttk.Combobox(control_frame, 
-                                         textvariable=self.algorithm_var, 
-                                         values=algorithms, 
-                                         state="readonly",
-                                         width=30)
-        self.algorithm_menu.grid(row=0, column=2, padx=5, sticky=tk.W)
-        self.algorithm_menu.current(0)
-        
-        
-        ttk.Label(control_frame, text="Time Quantum (for RR):").grid(row=0, column=3, padx=5, sticky=tk.E)
-        self.quantum_entry = ttk.Entry(control_frame, width=5)
-        self.quantum_entry.insert(0, "4")
-        self.quantum_entry.grid(row=0, column=4, padx=5, sticky=tk.W)
-        
-      
-        self.run_btn = ttk.Button(control_frame, 
-                                 text="▶ Run Simulation", 
-                                 command=self.run_algorithm,
-                                 style='Accent.TButton')
-        self.run_btn.grid(row=0, column=5, padx=10, pady=5)
-        
-        
-        for i in range(6):
-            control_frame.grid_columnconfigure(i, weight=1)
-        
-      
-        content_frame = ttk.Frame(self.root, style='TFrame')
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        
-        left_panel = ttk.Frame(content_frame, style='TFrame')
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-      
-        dataset_frame = ttk.LabelFrame(left_panel, 
-                                     text="Dataset Preview", 
-                                     padding=(10, 5),
-                                     style='TFrame')
-        dataset_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        self.dataset_text = tk.Text(dataset_frame, 
-                                  height=10, 
-                                  font=('Consolas', 10),
-                                  wrap=tk.NONE)
-        self.dataset_text.pack(fill=tk.BOTH, expand=True)
-        
-      
-        y_scroll = ttk.Scrollbar(dataset_frame, orient=tk.VERTICAL, command=self.dataset_text.yview)
-        y_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        x_scroll = ttk.Scrollbar(dataset_frame, orient=tk.HORIZONTAL, command=self.dataset_text.xview)
-        x_scroll.pack(side=tk.BOTTOM, fill=tk.X)
-        self.dataset_text.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
-        
+    printf("Enter dataset filename: ");
+    scanf("%s", filename);
+    load_dataset(&pl, filename);
     
-        self.gantt_frame = ttk.LabelFrame(left_panel, 
-                                        text="Gantt Chart", 
-                                        padding=(10, 5),
-                                        style='TFrame')
-        self.gantt_frame.pack(fill=tk.BOTH, expand=True)
-        
-        
-        right_panel = ttk.Frame(content_frame, style='TFrame')
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=5, pady=5)
-        
+    printf("\nScheduling Algorithms:\n");
+    printf("1. First Come First Serve (FCFS)\n");
+    printf("2. Shortest Job First (SJF)\n");
+    printf("3. Shortest Remaining Time First (SRTF)\n");
+    printf("4. Round Robin (RR)\n");
+    printf("5. Priority with Preemption\n");
+    printf("6. Priority without Preemption\n");
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
     
-        result_frame = ttk.LabelFrame(right_panel, 
-                                     text="Scheduling Results", 
-                                     padding=(10, 5),
-                                     style='TFrame')
-        result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
+    switch(choice) {
+        case 1:
+            fcfs(&pl);
+            break;
+        case 2:
+            sjf(&pl);
+            break;
+        case 3:
+            srtf(&pl);
+            break;
+        case 4:
+            printf("Enter time quantum: ");
+            scanf("%d", &quantum);
+            round_robin(&pl, quantum);
+            break;
+        case 5:
+            priority_preemptive(&pl);
+            break;
+        case 6:
+            priority_non_preemptive(&pl);
+            break;
+        default:
+            printf("Invalid choice\n");
+            return 1;
+    }
     
-        self.result_tree = ttk.Treeview(result_frame)
-        self.result_tree.pack(fill=tk.BOTH, expand=True)
-        
-        # Add scrollbar
-        tree_scroll = ttk.Scrollbar(result_frame, orient=tk.VERTICAL, command=self.result_tree.yview)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.result_tree.configure(yscrollcommand=tree_scroll.set)
-        
+    printf("\nScheduling Results:\n");
+    print_results(&pl);
+    calculate_metrics(&pl);
+    printf("\nGantt Chart:\n");
+    print_gantt_chart(&pl);
     
-        stats_frame = ttk.LabelFrame(right_panel, 
-                                   text="Performance Metrics", 
-                                   padding=(10, 5),
-                                   style='TFrame')
-        stats_frame.pack(fill=tk.BOTH, expand=False)
-        
+    return 0;
+}
+
+void load_dataset(ProcessList *pl, const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Error opening file\n");
+        exit(1);
+    }
     
-        self.stats_text = tk.Text(stats_frame, 
-                                height=4, 
-                                font=('Helvetica', 10),
-                                bg="#f8f9fa",
-                                relief=tk.FLAT)
-        self.stats_text.pack(fill=tk.BOTH, expand=True)
-        
+    char line[100];
+    fgets(line, sizeof(line), file); 
     
-        self.status_var = tk.StringVar()
-        self.status_var.set("Ready")
-        status_bar = ttk.Label(self.root, 
-                             textvariable=self.status_var,
-                             relief=tk.SUNKEN,
-                             anchor=tk.W,
-                             style='TLabel')
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        
-        self.style.configure('Accent.TButton', 
-                           foreground='white', 
-                           background='#3498db',
-                           font=self.button_font)
-        
-    def load_dataset(self):
-        file_path = filedialog.askopenfilename(
-            title="Select Dataset File",
-            filetypes=(("CSV files", "*.csv"), ("All files", "*.*"))
-        )
-        
-        if not file_path:
-            return
-        
-        try:
-            self.dataset = pd.read_csv(file_path)
-            self.dataset_text.delete(1.0, tk.END)
-            self.dataset_text.insert(tk.END, self.dataset.to_string(index=False))
-            self.status_var.set(f"Dataset loaded successfully: {file_path}")
-            messagebox.showinfo("Success", "Data loaded successfully")
-            
-          
-            if 'Priority' not in self.dataset.columns:
-                self.algorithm_menu['values'] = [
-                    "First Come First Serve (FCFS)",
-                    "Shortest Job First (SJF)",
-                    "Shortest Remaining Time First (SRTF)",
-                    "Round Robin (RR)"
-                ]
-            else:
-                self.algorithm_menu['values'] = [
-                    "First Come First Serve (FCFS)",
-                    "Shortest Job First (SJF)",
-                    "Shortest Remaining Time First (SRTF)",
-                    "Round Robin (RR)",
-                    "Priority with Preemption",
-                    "Priority without Preemption"
-                ]
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load dataset: {str(e)}")
-            self.status_var.set("Error loading dataset")
+    while (fgets(line, sizeof(line), file) && pl->count < MAX_PROCESSES) {
+        Process *p = &pl->processes[pl->count++];
+        sscanf(line, "%s %d %d %d", p->name, &p->arrival_time, &p->burst_time, &p->priority);
+        p->remaining_time = p->burst_time;
+    }
     
-    def run_algorithm(self):
-        if self.dataset is None:
-            messagebox.showerror("Error", "Please load a dataset first")
-            self.status_var.set("Error: No dataset loaded")
-            return
-        
-        algorithm = self.algorithm_var.get()
-        self.status_var.set(f"Running {algorithm}...")
-        self.root.update()
-        
-        try:
-            if algorithm == "First Come First Serve (FCFS)":
-                results = self.fcfs()
-            elif algorithm == "Shortest Job First (SJF)":
-                results = self.sjf()
-            elif algorithm == "Shortest Remaining Time First (SRTF)":
-                results = self.srtf()
-            elif algorithm == "Round Robin (RR)":
-                quantum = int(self.quantum_entry.get())
-                results = self.round_robin(quantum)
-            elif algorithm == "Priority with Preemption":
-                results = self.priority_preemptive()
-            elif algorithm == "Priority without Preemption":
-                results = self.priority_non_preemptive()
-            else:
-                messagebox.showerror("Error", "Invalid algorithm selected")
-                self.status_var.set("Error: Invalid algorithm")
-                return
-            
-            self.display_results(results)
-            self.plot_gantt_chart(results)
-            self.status_var.set(f"Completed: {algorithm} - Ready")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to run algorithm: {str(e)}")
-            self.status_var.set(f"Error running {algorithm}")
+    fclose(file);
+}
+
+void print_results(ProcessList *pl) {
+    printf("Process | Arrival | Burst | Prio | Start | Compl | TAT | Wait\n");
+    printf("--------|---------|-------|------|-------|-------|-----|-----\n");
     
-    def display_results(self, results):
-        
-        for item in self.result_tree.get_children():
-            self.result_tree.delete(item)
-        
+    for (int i = 0; i < pl->count; i++) {
+        Process *p = &pl->processes[i];
+        printf("%7s | %7d | %5d | %4d | %5d | %5d | %3d | %4d\n",
+               p->name, p->arrival_time, p->burst_time, p->priority,
+               p->start_time, p->completion_time, p->turnaround_time, p->waiting_time);
+    }
+}
+
+void calculate_metrics(ProcessList *pl) {
+    int total_tat = 0, total_wt = 0;
     
-        columns = list(results[0].keys())
-        self.result_tree["columns"] = columns
-        self.result_tree.column("#0", width=0, stretch=tk.NO)
-        
-        for col in columns:
-            self.result_tree.column(col, anchor=tk.CENTER, width=100)
-            self.result_tree.heading(col, text=col)
-        
-        
-        for process in results:
-            self.result_tree.insert("", tk.END, values=tuple(process.values()))
-        
+    for (int i = 0; i < pl->count; i++) {
+        Process *p = &pl->processes[i];
+        total_tat += p->turnaround_time;
+        total_wt += p->waiting_time;
+    }
     
-        total_tat = sum(process['Turnaround Time'] for process in results)
-        avg_tat = total_tat / len(results)
-        total_wt = sum(process['Waiting Time'] for process in results)
-        avg_wt = total_wt / len(results)
-        
-        
-        self.stats_text.delete(1.0, tk.END)
-        stats = f"╔{'═'*65}╗\n"
-        stats += f"║ {'Total Turnaround Time:':<30}{total_tat:>10.2f}{' '*23}║\n"
-        stats += f"║ {'Average Turnaround Time:':<30}{avg_tat:>10.2f}{' '*23}║\n"
-        stats += f"║ {'Total Waiting Time:':<30}{total_wt:>10.2f}{' '*23}║\n"
-        stats += f"║ {'Average Waiting Time:':<30}{avg_wt:>10.2f}{' '*23}║\n"
-        stats += f"╚{'═'*65}╝"
-        self.stats_text.insert(tk.END, stats)
-        self.stats_text.tag_configure("center", justify='center')
-        self.stats_text.tag_add("center", "1.0", "end")
-    
-    def plot_gantt_chart(self, results):
-        # Clear previous gantt chart
-        for widget in self.gantt_frame.winfo_children():
-            widget.destroy()
-        
-      
-        processes = []
-        start_times = []
-        durations = []
-        
-        for process in results:
-            processes.append(process['Process'])
-            start_times.append(process['Start Time'])
-            durations.append(process['Completion Time'] - process['Start Time'])
-        
-    
-        fig, ax = plt.subplots(figsize=(10, 3))
-        colors = plt.cm.tab20.colors
-        
+    printf("\nPerformance Metrics:\n");
+    printf("Total Turnaround Time: %d\n", total_tat);
+    printf("Average Turnaround Time: %.2f\n", (float)total_tat / pl->count);
+    printf("Total Waiting Time: %d\n", total_wt);
+    printf("Average Waiting Time: %.2f\n", (float)total_wt / pl->count);
+}
+
+void print_gantt_chart(ProcessList *pl) {
   
-        y_pos = range(len(processes))
-        ax.barh(y_pos, durations, left=start_times, color=colors, edgecolor='black')
-        
-        
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(processes)
-        ax.set_xlabel('Time')
-        ax.set_title('Gantt Chart')
-        ax.grid(True, which='both', axis='x', linestyle='--', alpha=0.7)
-        
-      
-        for i, (start, duration) in enumerate(zip(start_times, durations)):
-            ax.text(start + duration/2, i, f"{duration}", 
-                   ha='center', va='center', color='black')
-        
-      
-        canvas = FigureCanvasTkAgg(fig, master=self.gantt_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    int max_time = 0;
+    for (int i = 0; i < pl->count; i++) {
+        if (pl->processes[i].completion_time > max_time) {
+            max_time = pl->processes[i].completion_time;
+        }
+    }
     
     
-    def fcfs(self):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        current_time = 0
-        
-        for _, process in processes.iterrows():
-            arrival = process['Arrival Time']
-            burst = process['Burst Time']
-            
-            if current_time < arrival:
-                current_time = arrival
-            
-            start_time = current_time
-            completion_time = start_time + burst
-            turnaround_time = completion_time - arrival
-            waiting_time = start_time - arrival
-            
-            results.append({
-                'Process': process['Process'],
-                'Arrival Time': arrival,
-                'Burst Time': burst,
-                'Start Time': start_time,
-                'Completion Time': completion_time,
-                'Turnaround Time': turnaround_time,
-                'Waiting Time': waiting_time
-            })
-            
-            current_time = completion_time
-        
-        return results
+    printf("+");
+    for (int i = 0; i <= max_time; i++) {
+        printf("--");
+    }
+    printf("+\n");
     
-    def sjf(self):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        current_time = 0
-        n = len(processes)
-        completed = 0
-        remaining = processes.copy()
-        
-        while completed != n:
-            # Get processes that have arrived
-            ready = remaining[remaining['Arrival Time'] <= current_time]
-            
-            if ready.empty:
-                current_time += 1
-                continue
-            
-          
-            shortest = ready.loc[ready['Burst Time'].idxmin()]
-            
-            start_time = current_time
-            completion_time = start_time + shortest['Burst Time']
-            turnaround_time = completion_time - shortest['Arrival Time']
-            waiting_time = start_time - shortest['Arrival Time']
-            
-            results.append({
-                'Process': shortest['Process'],
-                'Arrival Time': shortest['Arrival Time'],
-                'Burst Time': shortest['Burst Time'],
-                'Start Time': start_time,
-                'Completion Time': completion_time,
-                'Turnaround Time': turnaround_time,
-                'Waiting Time': waiting_time
-            })
-            
-            current_time = completion_time
-            remaining = remaining.drop(shortest.name)
-            completed += 1
-        
-        return results
-    
-    def srtf(self):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        n = len(processes)
-        remaining_time = processes['Burst Time'].values.copy()
-        completed = 0
-        current_time = 0
-        
-        
-        process_info = {row['Process']: {
-            'arrival': row['Arrival Time'],
-            'burst': row['Burst Time'],
-            'start': -1,
-            'completion': -1,
-            'remaining': row['Burst Time']
-        } for _, row in processes.iterrows()}
-        
-        while completed != n:
-          
-            ready = [p for p in process_info 
-                    if process_info[p]['arrival'] <= current_time and 
-                    process_info[p]['remaining'] > 0]
-            
-            if not ready:
-                current_time += 1
-                continue
-            
-      
-            next_process = min(ready, key=lambda x: process_info[x]['remaining'])
-            
-          
-            if process_info[next_process]['start'] == -1:
-                process_info[next_process]['start'] = current_time
-            
-        
-            process_info[next_process]['remaining'] -= 1
-            current_time += 1
-            
-            
-            if process_info[next_process]['remaining'] == 0:
-                completed += 1
-                process_info[next_process]['completion'] = current_time
-        
-        
-        for process in process_info:
-            info = process_info[process]
-            results.append({
-                'Process': process,
-                'Arrival Time': info['arrival'],
-                'Burst Time': info['burst'],
-                'Start Time': info['start'],
-                'Completion Time': info['completion'],
-                'Turnaround Time': info['completion'] - info['arrival'],
-                'Waiting Time': (info['completion'] - info['arrival']) - info['burst']
-            })
-        
-        
-        results.sort(key=lambda x: x['Completion Time'])
-        return results
-    
-    def round_robin(self, quantum):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        n = len(processes)
-        remaining_time = processes['Burst Time'].values.copy()
-        completed = 0
-        current_time = 0
-        
-        
-        process_info = {row['Process']: {
-            'arrival': row['Arrival Time'],
-            'burst': row['Burst Time'],
-            'start': -1,
-            'completion': -1,
-            'remaining': row['Burst Time']
-        } for _, row in processes.iterrows()}
-        
-        queue = []
-        arrived = set()
-        
-        
-        for _, process in processes.iterrows():
-            if process['Arrival Time'] == 0:
-                queue.append(process['Process'])
-                arrived.add(process['Process'])
-        
-        while completed != n:
-            if not queue:
-                current_time += 1
-                # Check for new arrivals
-                for _, process in processes.iterrows():
-                    if (process['Arrival Time'] <= current_time and 
-                        process['Process'] not in arrived and 
-                        process_info[process['Process']]['remaining'] > 0):
-                        queue.append(process['Process'])
-                        arrived.add(process['Process'])
-                continue
-            
-            current_process = queue.pop(0)
-            
-          
-            if process_info[current_process]['start'] == -1:
-                process_info[current_process]['start'] = current_time
-            
-            
-            exec_time = min(quantum, process_info[current_process]['remaining'])
-            process_info[current_process]['remaining'] -= exec_time
-            current_time += exec_time
-            
-        
-            for _, process in processes.iterrows():
-                if (process['Arrival Time'] <= current_time and 
-                    process['Process'] not in arrived and 
-                    process_info[process['Process']]['remaining'] > 0):
-                    queue.append(process['Process'])
-                    arrived.add(process['Process'])
-            
-        
-            if process_info[current_process]['remaining'] == 0:
-                completed += 1
-                process_info[current_process]['completion'] = current_time
-            else:
-                # Put back in queue
-                queue.append(current_process)
-        
-      
-        for process in process_info:
-            info = process_info[process]
-            results.append({
-                'Process': process,
-                'Arrival Time': info['arrival'],
-                'Burst Time': info['burst'],
-                'Start Time': info['start'],
-                'Completion Time': info['completion'],
-                'Turnaround Time': info['completion'] - info['arrival'],
-                'Waiting Time': (info['completion'] - info['arrival']) - info['burst']
-            })
-        
-    
-        results.sort(key=lambda x: x['Completion Time'])
-        return results
-    
-    def priority_preemptive(self):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        n = len(processes)
-        remaining_time = processes['Burst Time'].values.copy()
-        completed = 0
-        current_time = 0
-        
-        
-        process_info = {row['Process']: {
-            'arrival': row['Arrival Time'],
-            'burst': row['Burst Time'],
-            'priority': row['Priority'],
-            'start': -1,
-            'completion': -1,
-            'remaining': row['Burst Time']
-        } for _, row in processes.iterrows()}
-        
-        while completed != n:
-        
-            ready = [p for p in process_info 
-                    if process_info[p]['arrival'] <= current_time and 
-                    process_info[p]['remaining'] > 0]
-            
-            if not ready:
-                current_time += 1
-                continue
-            
-      
-            next_process = min(ready, key=lambda x: process_info[x]['priority'])
-            
-           
-            if process_info[next_process]['start'] == -1:
-                process_info[next_process]['start'] = current_time
-            
-          
-            process_info[next_process]['remaining'] -= 1
-            current_time += 1
-            
-           
-            if process_info[next_process]['remaining'] == 0:
-                completed += 1
-                process_info[next_process]['completion'] = current_time
-        
-      
-        for process in process_info:
-            info = process_info[process]
-            results.append({
-                'Process': process,
-                'Arrival Time': info['arrival'],
-                'Burst Time': info['burst'],
-                'Priority': info['priority'],
-                'Start Time': info['start'],
-                'Completion Time': info['completion'],
-                'Turnaround Time': info['completion'] - info['arrival'],
-                'Waiting Time': (info['completion'] - info['arrival']) - info['burst']
-            })
-        
 
-        results.sort(key=lambda x: x['Completion Time'])
-        return results
+    printf("|");
+    for (int i = 0; i < pl->count; i++) {
+        Process *p = &pl->processes[i];
+        int duration = p->completion_time - p->start_time;
+        for (int j = 0; j < duration; j++) {
+            printf("%.2s", p->name);
+        }
+    }
+    printf("|\n");
     
-    def priority_non_preemptive(self):
-        processes = self.dataset.copy()
-        processes = processes.sort_values(by='Arrival Time')
-        
-        results = []
-        current_time = 0
-        n = len(processes)
-        completed = 0
-        remaining = processes.copy()
-        
-        while completed != n:
-          
-            ready = remaining[remaining['Arrival Time'] <= current_time]
-            
-            if ready.empty:
-                current_time += 1
-                continue
-            
-           
-            highest_priority = ready.loc[ready['Priority'].idxmin()]
-            
-            start_time = current_time
-            completion_time = start_time + highest_priority['Burst Time']
-            turnaround_time = completion_time - highest_priority['Arrival Time']
-            waiting_time = start_time - highest_priority['Arrival Time']
-            
-            results.append({
-                'Process': highest_priority['Process'],
-                'Arrival Time': highest_priority['Arrival Time'],
-                'Burst Time': highest_priority['Burst Time'],
-                'Priority': highest_priority['Priority'],
-                'Start Time': start_time,
-                'Completion Time': completion_time,
-                'Turnaround Time': turnaround_time,
-                'Waiting Time': waiting_time
-            })
-            
-            current_time = completion_time
-            remaining = remaining.drop(highest_priority.name) 
-            completed += 1
-        
-        return results
+   
+    printf("+");
+    for (int i = 0; i <= max_time; i++) {
+        printf("--");
+    }
+    printf("+\n");
+    
+    printf("0");
+    for (int i = 1; i <= max_time; i++) {
+        printf(" %2d", i);
+    }
+    printf("\n");
+}
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = CPUSchedulingApp(root)
-    root.mainloop()
+void sort_by_arrival(ProcessList *pl) {
+    for (int i = 0; i < pl->count - 1; i++) {
+        for (int j = 0; j < pl->count - i - 1; j++) {
+            if (pl->processes[j].arrival_time > pl->processes[j+1].arrival_time) {
+                Process temp = pl->processes[j];
+                pl->processes[j] = pl->processes[j+1];
+                pl->processes[j+1] = temp;
+            }
+        }
+    }
+}
+
+void sort_by_burst(ProcessList *pl) {
+    for (int i = 0; i < pl->count - 1; i++) {
+        for (int j = 0; j < pl->count - i - 1; j++) {
+            if (pl->processes[j].burst_time > pl->processes[j+1].burst_time) {
+                Process temp = pl->processes[j];
+                pl->processes[j] = pl->processes[j+1];
+                pl->processes[j+1] = temp;
+            }
+        }
+    }
+}
+
+void sort_by_priority(ProcessList *pl) {
+    for (int i = 0; i < pl->count - 1; i++) {
+        for (int j = 0; j < pl->count - i - 1; j++) {
+            if (pl->processes[j].priority > pl->processes[j+1].priority) {
+                Process temp = pl->processes[j];
+                pl->processes[j] = pl->processes[j+1];
+                pl->processes[j+1] = temp;
+            }
+        }
+    }
+}
+
+void fcfs(ProcessList *pl) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    for (int i = 0; i < pl->count; i++) {
+        Process *p = &pl->processes[i];
+        
+        if (current_time < p->arrival_time) {
+            current_time = p->arrival_time;
+        }
+        
+        p->start_time = current_time;
+        p->completion_time = current_time + p->burst_time;
+        p->turnaround_time = p->completion_time - p->arrival_time;
+        p->waiting_time = p->start_time - p->arrival_time;
+        
+        current_time = p->completion_time;
+    }
+}
+
+void sjf(ProcessList *pl) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    int completed = 0;
+    bool is_completed[MAX_PROCESSES] = {false};
+    
+    while (completed != pl->count) {
+        int idx = -1;
+        int min_burst = INT_MAX;
+        
+        for (int i = 0; i < pl->count; i++) {
+            if (!is_completed[i] && pl->processes[i].arrival_time <= current_time) {
+                if (pl->processes[i].burst_time < min_burst) {
+                    min_burst = pl->processes[i].burst_time;
+                    idx = i;
+                }
+                if (pl->processes[i].burst_time == min_burst) {
+                    if (pl->processes[i].arrival_time < pl->processes[idx].arrival_time) {
+                        idx = i;
+                    }
+                }
+            }
+        }
+        
+        if (idx != -1) {
+            Process *p = &pl->processes[idx];
+            p->start_time = current_time;
+            p->completion_time = current_time + p->burst_time;
+            p->turnaround_time = p->completion_time - p->arrival_time;
+            p->waiting_time = p->start_time - p->arrival_time;
+            
+            is_completed[idx] = true;
+            completed++;
+            current_time = p->completion_time;
+        } else {
+            current_time++;
+        }
+    }
+}
+
+void srtf(ProcessList *pl) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    int completed = 0;
+    int prev = -1;
+
+    for (int i = 0; i < pl->count; i++) {
+        pl->processes[i].remaining_time = pl->processes[i].burst_time;
+    }
+    
+    while (completed != pl->count) {
+        int idx = -1;
+        int min_remaining = INT_MAX;
+        
+        for (int i = 0; i < pl->count; i++) {
+            if (pl->processes[i].arrival_time <= current_time && 
+                pl->processes[i].remaining_time > 0 && 
+                pl->processes[i].remaining_time < min_remaining) {
+                min_remaining = pl->processes[i].remaining_time;
+                idx = i;
+            }
+        }
+        
+        if (idx != -1) {
+            if (prev != idx) {
+                if (prev != -1 && pl->processes[prev].remaining_time > 0) {
+                    pl->processes[prev].completion_time = current_time;
+                }
+                pl->processes[idx].start_time = current_time;
+                prev = idx;
+            }
+            
+            pl->processes[idx].remaining_time--;
+            current_time++;
+            
+            if (pl->processes[idx].remaining_time == 0) {
+                completed++;
+                pl->processes[idx].completion_time = current_time;
+                pl->processes[idx].turnaround_time = 
+                    pl->processes[idx].completion_time - pl->processes[idx].arrival_time;
+                pl->processes[idx].waiting_time = 
+                    pl->processes[idx].turnaround_time - pl->processes[idx].burst_time;
+            }
+        } else {
+            current_time++;
+        }
+    }
+}
+
+void round_robin(ProcessList *pl, int quantum) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    int completed = 0;
+    int queue[MAX_PROCESSES];
+    int front = 0, rear = -1;
+    bool is_queued[MAX_PROCESSES] = {false};
+   
+    for (int i = 0; i < pl->count; i++) {
+        pl->processes[i].remaining_time = pl->processes[i].burst_time;
+    }
+    
+ 
+    for (int i = 0; i < pl->count; i++) {
+        if (pl->processes[i].arrival_time <= current_time) {
+            queue[++rear] = i;
+            is_queued[i] = true;
+        }
+    }
+    
+    while (completed != pl->count) {
+        if (front > rear) {
+            current_time++;
+           
+            for (int i = 0; i < pl->count; i++) {
+                if (!is_queued[i] && pl->processes[i].arrival_time <= current_time) {
+                    queue[++rear] = i;
+                    is_queued[i] = true;
+                }
+            }
+            continue;
+        }
+        
+        int idx = queue[front++];
+        Process *p = &pl->processes[idx];
+        
+        if (p->remaining_time == p->burst_time) {
+            p->start_time = current_time;
+        }
+        
+        if (p->remaining_time > quantum) {
+            current_time += quantum;
+            p->remaining_time -= quantum;
+            
+        
+            for (int i = 0; i < pl->count; i++) {
+                if (!is_queued[i] && pl->processes[i].arrival_time <= current_time) {
+                    queue[++rear] = i;
+                    is_queued[i] = true;
+                }
+            }
+            
+            queue[++rear] = idx;
+        } else {
+            current_time += p->remaining_time;
+            p->remaining_time = 0;
+            p->completion_time = current_time;
+            p->turnaround_time = p->completion_time - p->arrival_time;
+            p->waiting_time = p->turnaround_time - p->burst_time;
+            completed++;
+            
+         
+            for (int i = 0; i < pl->count; i++) {
+                if (!is_queued[i] && pl->processes[i].arrival_time <= current_time) {
+                    queue[++rear] = i;
+                    is_queued[i] = true;
+                }
+            }
+        }
+    }
+}
+
+void priority_preemptive(ProcessList *pl) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    int completed = 0;
+    int prev = -1;
+    
+ 
+    for (int i = 0; i < pl->count; i++) {
+        pl->processes[i].remaining_time = pl->processes[i].burst_time;
+    }
+    
+    while (completed != pl->count) {
+        int idx = -1;
+        int highest_priority = INT_MAX;
+        
+        for (int i = 0; i < pl->count; i++) {
+            if (pl->processes[i].arrival_time <= current_time && 
+                pl->processes[i].remaining_time > 0 && 
+                pl->processes[i].priority < highest_priority) {
+                highest_priority = pl->processes[i].priority;
+                idx = i;
+            }
+        }
+        
+        if (idx != -1) {
+            if (prev != idx) {
+                if (prev != -1 && pl->processes[prev].remaining_time > 0) {
+                    pl->processes[prev].completion_time = current_time;
+                }
+                pl->processes[idx].start_time = current_time;
+                prev = idx;
+            }
+            
+            pl->processes[idx].remaining_time--;
+            current_time++;
+            
+            if (pl->processes[idx].remaining_time == 0) {
+                completed++;
+                pl->processes[idx].completion_time = current_time;
+                pl->processes[idx].turnaround_time = 
+                    pl->processes[idx].completion_time - pl->processes[idx].arrival_time;
+                pl->processes[idx].waiting_time = 
+                    pl->processes[idx].turnaround_time - pl->processes[idx].burst_time;
+            }
+        } else {
+            current_time++;
+        }
+    }
+}
+
+void priority_non_preemptive(ProcessList *pl) {
+    sort_by_arrival(pl);
+    
+    int current_time = 0;
+    int completed = 0;
+    bool is_completed[MAX_PROCESSES] = {false};
+    
+    while (completed != pl->count) {
+        int idx = -1;
+        int highest_priority = INT_MAX;
+        
+        for (int i = 0; i < pl->count; i++) {
+            if (!is_completed[i] && pl->processes[i].arrival_time <= current_time) {
+                if (pl->processes[i].priority < highest_priority) {
+                    highest_priority = pl->processes[i].priority;
+                    idx = i;
+                }
+                if (pl->processes[i].priority == highest_priority) {
+                    if (pl->processes[i].arrival_time < pl->processes[idx].arrival_time) {
+                        idx = i;
+                    }
+                }
+            }
+        }
+        
+        if (idx != -1) {
+            Process *p = &pl->processes[idx];
+            p->start_time = current_time;
+            p->completion_time = current_time + p->burst_time;
+            p->turnaround_time = p->completion_time - p->arrival_time;
+            p->waiting_time = p->start_time - p->arrival_time;
+            
+            is_completed[idx] = true;
+            completed++;
+            current_time = p->completion_time;
+        } else {
+            current_time++;
+        }
+    }
+}
